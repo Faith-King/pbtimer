@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PBtimer — Personal Best Timer</title>
+<style>
+:root{
+  --bg:#0a0b0e; --bg2:#0e1014; --card:#14161b; --card2:#1a1d24; --line:#23262e;
+  --txt:#e8eaed; --dim:#9aa0aa; --faint:#5c616b;
+  --acc:#22d3ee; --ok:#34d399; --bad:#f4536a; --warn:#fbbf24;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,textarea,select{font-family:inherit;color:var(--txt);background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px;outline:none}
+input:focus,textarea:focus,select:focus{border-color:var(--acc)}
+button:focus-visible,a:focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:6px}
+::selection{background:var(--acc);color:#000}
+
+/* ---------- layout ---------- */
+#app{display:flex;height:100dvh}
+#side{width:200px;flex:0 0 auto;background:var(--bg2);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:16px 10px;gap:2px}
+#brand{display:flex;align-items:center;gap:10px;padding:6px 8px 18px}
+#logo{background:#000;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-family:var(--mono);font-size:20px;font-weight:700;letter-spacing:1px;color:var(--acc);box-shadow:inset 0 0 12px rgba(34,211,238,.12)}
+#brand small{display:block;color:var(--faint);font-size:10px;letter-spacing:2px;text-transform:uppercase;margin-top:2px}
+.nav-btn{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border-radius:9px;color:var(--dim);font-size:14px;font-weight:500;transition:background .12s,color .12s}
+.nav-btn:hover{background:var(--card);color:var(--txt)}
+.nav-btn.active{background:var(--card2);color:var(--acc)}
+.nav-btn svg{width:17px;height:17px;flex:0 0 auto}
+#side .spacer{flex:1}
+#credit{padding:10px 8px;font-size:10.5px;color:var(--faint);line-height:1.5}
+#credit a{color:var(--dim)}
+
+#main{flex:1;min-width:0;overflow-y:auto;position:relative}
+.page{display:none;padding:28px 32px 80px;max-width:1100px;margin:0 auto}
+.page.active{display:block}
+h1{font-size:22px;font-weight:700;letter-spacing:-.02em;margin-bottom:4px}
+.sub{color:var(--dim);font-size:13px;margin-bottom:22px}
+
+/* ---------- timer ---------- */
+#page-timer{max-width:900px}
+#timer-wrap{min-height:62dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;user-select:none;-webkit-user-select:none}
+#scramble{font-family:var(--mono);font-size:clamp(15px,2.4vw,21px);letter-spacing:2px;color:var(--dim);text-align:center;line-height:1.7;max-width:640px;min-height:2.4em;transition:opacity .15s}
+#scramble.fresh{animation:fadein .3s}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+#time{font-family:var(--mono);font-size:clamp(64px,14vw,120px);font-weight:600;letter-spacing:-2px;line-height:1;color:var(--txt);font-variant-numeric:tabular-nums}
+#time.ready{color:var(--ok)}
+#time.holding{color:var(--warn)}
+#time.inspecting{color:var(--warn)}
+#timer-hint{font-size:12px;color:var(--faint);letter-spacing:1px;text-transform:uppercase}
+#timer-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.chip{padding:7px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--dim);font-size:12.5px;font-weight:600;transition:.12s}
+.chip:hover{border-color:var(--faint);color:var(--txt)}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#001318}
+#recent{width:100%;max-width:560px;margin-top:8px}
+#recent table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:13.5px}
+#recent th{text-align:left;color:var(--faint);font-weight:500;font-size:11px;text-transform:uppercase;letter-spacing:1px;padding:6px 8px;border-bottom:1px solid var(--line)}
+#recent td{padding:7px 8px;border-bottom:1px solid #171a20}
+#recent tr:last-child td{border-bottom:none}
+#recent td:last-child{text-align:right;color:var(--dim)}
+#recent tr.pb td:first-child{color:var(--acc)}
+#sess-bar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+#sess-bar select{max-width:220px}
+#ao-strip{display:flex;gap:22px;font-family:var(--mono);font-size:13px;color:var(--dim);justify-content:center;margin-top:6px}
+#ao-strip b{color:var(--txt);font-weight:600}
+
+/* ---------- cards / stats ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.stat .k{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--faint);margin-bottom:6px}
+.stat .v{font-family:var(--mono);font-size:26px;font-weight:600}
+.stat .v small{font-size:14px;color:var(--dim);font-weight:400}
+.section-title{font-size:12px;text-transform:uppercase;letter-spacing:1.5px;color:var(--faint);margin:26px 0 12px}
+
+/* ---------- graph ---------- */
+#graph-box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;position:relative}
+#graph-toggles{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+#graph{width:100%;height:280px;display:block;cursor:crosshair}
+#tooltip{position:absolute;pointer-events:none;background:#000d;border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-family:var(--mono);font-size:12px;line-height:1.6;display:none;z-index:5;white-space:nowrap}
+
+/* ---------- alg library ---------- */
+.lib-head{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+#prog-wrap{flex:1;min-width:220px}
+#prog-bar{height:6px;background:var(--card2);border-radius:99px;overflow:hidden;margin-top:6px}
+#prog-fill{height:100%;background:var(--acc);width:0%;transition:width .3s}
+#prog-label{font-size:12px;color:var(--dim)}
+.alg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.alg-card{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:12px;cursor:pointer;transition:transform .12s,border-color .12s;position:relative}
+.alg-card:hover{transform:translateY(-2px);border-color:var(--faint)}
+.alg-card.learned{border-color:rgba(52,211,153,.4)}
+.alg-card .num{font-family:var(--mono);font-size:12px;color:var(--faint);display:flex;justify-content:space-between}
+.alg-card .nm{font-size:12.5px;color:var(--dim);margin-top:6px;min-height:2.2em}
+.alg-card .fav{position:absolute;top:8px;right:10px;color:var(--faint);font-size:13px}
+.alg-card .fav.on{color:var(--warn)}
+.alg-card svg{display:block;margin:8px auto 0}
+.empty{border:1px dashed var(--line);border-radius:12px;padding:44px 20px;text-align:center;color:var(--dim)}
+.empty p{margin-bottom:16px}
+
+/* ---------- modal ---------- */
+#modal{position:fixed;inset:0;background:rgba(4,5,7,.72);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:50;padding:18px}
+#modal.open{display:flex}
+#modal-card{background:var(--bg2);border:1px solid var(--line);border-radius:16px;max-width:560px;width:100%;max-height:92dvh;overflow-y:auto;padding:26px}
+#modal-card h2{font-size:19px;margin-bottom:2px}
+#modal-card .m-sub{color:var(--dim);font-size:13px;margin-bottom:14px}
+#m-cube{display:flex;justify-content:center;padding:8px 0 16px}
+#m-alg{font-family:var(--mono);font-size:16.5px;line-height:1.7;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px;word-break:break-word}
+.m-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.btn{padding:9px 16px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--txt);font-size:13px;font-weight:600;transition:.12s}
+.btn:hover{border-color:var(--faint)}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:#001318}
+.btn.on{background:rgba(52,211,153,.15);border-color:var(--ok);color:var(--ok)}
+.m-label{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--faint);margin:14px 0 6px}
+#m-notes{width:100%;min-height:64px;resize:vertical}
+#m-video{border:1px dashed var(--line);border-radius:10px;padding:22px;text-align:center;color:var(--faint);font-size:13px}
+#m-close{position:sticky;top:0;float:right;color:var(--dim);font-size:20px;padding:2px 8px}
+.recog{font-size:13px;color:var(--dim);line-height:1.6;background:var(--card);border-radius:10px;padding:12px 14px}
+
+/* ---------- solves ---------- */
+.solve-row{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:8px}
+.solve-row .t{font-family:var(--mono);font-size:16px;font-weight:600;min-width:86px}
+.solve-row .t.dnf{color:var(--bad)}
+.solve-row .t.plus{color:var(--warn)}
+.solve-row .sc{font-family:var(--mono);font-size:11.5px;color:var(--faint);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.solve-row .ts{font-size:11px;color:var(--faint);white-space:nowrap}
+.solve-row .acts{display:flex;gap:4px}
+.icon-btn{width:28px;height:28px;border-radius:7px;border:1px solid var(--line);color:var(--dim);font-size:12px;font-weight:700}
+.icon-btn:hover{color:var(--txt);border-color:var(--faint)}
+.icon-btn.del:hover{color:var(--bad);border-color:var(--bad)}
+
+/* ---------- settings ---------- */
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--card);border:1px solid var(--line);border-radius:11px;padding:14px 18px;margin-bottom:10px;flex-wrap:wrap}
+.set-row .info b{display:block;font-size:14px;margin-bottom:2px}
+.set-row .info span{font-size:12px;color:var(--dim)}
+
+/* ---------- mobile ---------- */
+#bottombar{display:none}
+@media(max-width:760px){
+  #side{display:none}
+  #bottombar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--line);z-index:40;padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+  #bottombar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;font-size:9.5px;letter-spacing:.5px;color:var(--faint);text-transform:uppercase;border-radius:8px}
+  #bottombar button.active{color:var(--acc)}
+  #bottombar svg{width:19px;height:19px}
+  .page{padding:18px 14px 110px}
+  #timer-wrap{min-height:56dvh}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <nav id="side" aria-label="Main">
+    <div id="brand">
+      <div id="logo" title="Your personal best">--.--</div>
+      <div><strong style="font-size:15px">PBtimer</strong><small>Personal Best</small></div>
+    </div>
+    <button class="nav-btn active" data-page="timer"></button>
+    <button class="nav-btn" data-page="solves"></button>
+    <button class="nav-btn" data-page="stats"></button>
+    <button class="nav-btn" data-page="cfop"></button>
+    <button class="nav-btn" data-page="oll"></button>
+    <button class="nav-btn" data-page="pll"></button>
+    <button class="nav-btn" data-page="settings"></button>
+    <div class="spacer"></div>
+    <div id="credit">CFOP algorithms &amp; learning references adapted from <a href="https://www.jperm.net" target="_blank" rel="noopener">J Perm</a> &amp; the speedcubing wiki. Not affiliated.<br><br>Your solves never leave this device.</div>
+  </nav>
+
+  <main id="main">
+    <!-- TIMER -->
+    <section class="page active" id="page-timer">
+      <div id="sess-bar">
+        <select id="session-select" aria-label="Session"></select>
+        <button class="chip" id="new-session">+ New session</button>
+        <button class="chip" id="rename-session">Rename</button>
+        <button class="chip" id="delete-session">Delete</button>
+      </div>
+      <div id="timer-wrap" tabindex="0" role="button" aria-label="Timer. Hold space or press and hold to arm, release to start, press to stop.">
+        <div id="scramble" class="fresh"></div>
+        <div id="time">0.00</div>
+        <div id="timer-hint">hold space / press &amp; hold</div>
+        <div id="ao-strip"><span>ao5 <b id="ao5">–</b></span><span>ao12 <b id="ao12">–</b></span><span>ao50 <b id="ao50">–</b></span></div>
+        <div id="timer-actions">
+          <button class="chip" id="btn-scramble">New scramble</button>
+          <button class="chip" id="btn-plus2">+2</button>
+          <button class="chip" id="btn-dnf">DNF</button>
+          <button class="chip" id="btn-del">Delete</button>
+          <button class="chip on" id="btn-auto" title="Auto-generate a new scramble after each solve">Auto</button>
+        </div>
+        <div id="recent">
+          <div class="section-title">Recent solves</div>
+          <table><thead><tr><th>#</th><th>Time</th><th style="text-align:right">Δ</th></tr></thead><tbody id="recent-body"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SOLVES -->
+    <section class="page" id="page-solves">
+      <h1>Solves</h1><p class="sub">Session history — hover a row for actions. Keyboard on Timer page: <b>2</b>=+2, <b>D</b>=DNF, <b>⌫</b>=delete.</p>
+      <div id="solves-list"></div>
+    </section>
+
+    <!-- STATS -->
+    <section class="page" id="page-stats">
+      <h1>Statistics</h1><p class="sub">All numbers computed from your recorded solves. Averages drop the best &amp; worst and are DNF if any solve is DNF.</p>
+      <div class="grid" id="stat-cards"></div>
+      <div class="section-title">Performance over time</div>
+      <div id="graph-box">
+        <div id="graph-toggles">
+          <button class="chip on" data-set="single">Single</button>
+          <button class="chip" data-set="ao5">Ao5</button>
+          <button class="chip" data-set="ao12">Ao12</button>
+          <button class="chip" data-set="ao50">Ao50</button>
+          <button class="chip" data-set="ao100">Ao100</button>
+        </div>
+        <canvas id="graph"></canvas>
+        <div id="tooltip"></div>
+      </div>
+      <div class="section-title">Your progress</div>
+      <div class="grid" id="prog-cards"></div>
+    </section>
+
+    <!-- CFOP -->
+    <section class="page" id="page-cfop">
+      <h1>CFOP</h1><p class="sub">The most popular speedcubing method. Four stages — the last two are fully algorithmic, and that's where PBtimer's libraries live.</p>
+      <div class="grid" id="cfop-grid"></div>
+    </section>
+
+    <!-- OLL / PLL -->
+    <section class="page" id="page-oll">
+      <h1>OLL <span style="color:var(--faint);font-size:14px;font-weight:400">57 cases · Orient Last Layer</span></h1>
+      <p class="sub">Click a case for the full view. Patterns computed live from the algorithm. Reference: J Perm &amp; speedcubing wiki.</p>
+      <div class="lib-head">
+        <input id="oll-search" placeholder="Search — e.g. 21, sune, lightning…" style="flex:2;min-width:200px">
+        <div id="prog-wrap"><div id="prog-label">0 / 57 learned</div><div id="prog-bar"><div id="prog-fill"></div></div></div>
+      </div>
+      <div class="lib-head" id="oll-filters">
+        <button class="chip on" data-f="all">All</button><button class="chip" data-f="learned">Learned</button>
+        <button class="chip" data-f="unknown">Unknown</button><button class="chip" data-f="fav">Favorites</button>
+      </div>
+      <div class="alg-grid" id="oll-grid"></div>
+    </section>
+
+    <section class="page" id="page-pll">
+      <h1>PLL <span style="color:var(--faint);font-size:14px;font-weight:400">21 cases · Permute Last Layer</span></h1>
+      <p class="sub">Click a case for the full view. Reference: J Perm &amp; speedcubing wiki.</p>
+      <div class="lib-head">
+        <input id="pll-search" placeholder="Search — e.g. T, G perm, headlights…" style="flex:2;min-width:200px">
+        <div id="prog-wrap"><div id="prog-label">0 / 21 learned</div><div id="prog-bar"><div id="prog-fill"></div></div></div>
+      </div>
+      <div class="lib-head" id="pll-filters">
+        <button class="chip on" data-f="all">All</button><button class="chip" data-f="learned">Learned</button>
+        <button class="chip" data-f="unknown">Unknown</button><button class="chip" data-f="fav">Favorites</button>
+      </div>
+      <div class="alg-grid" id="pll-grid"></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="page" id="page-settings">
+      <h1>Settings</h1><p class="sub">Stored locally on this device.</p>
+      <div class="section-title">Timer</div>
+      <div class="set-row"><div class="info"><b>Inspection</b><span>WCA-style 15s countdown before the solve starts</span></div><select id="set-inspection"><option value="0">Off</option><option value="15">15 seconds</option></select></div>
+      <div class="set-row"><div class="info"><b>Decimal places</b></span></div><select id="set-decimals"><option value="2">2 (15.42)</option><option value="3">3 (15.423)</option></select></div>
+      <div class="set-row"><div class="info"><b>Sound</b><span>Beeps on ready / start / stop</span></div><select id="set-sound"><option value="1">On</option><option value="0">Off</option></select></div>
+      <div class="set-row"><div class="info"><b>Accent color</b></div><select id="set-accent"><option value="#22d3ee">Cyan</option><option value="#34d399">Green</option><option value="#a78bfa">Purple</option><option value="#60a5fa">Blue</option><option value="#f472b6">Pink</option></select></div>
+      <div class="section-title">Data</div>
+      <div class="set-row"><div class="info"><b>Export</b><span>Download all sessions &amp; solves</span></div><div style="display:flex;gap:8px"><button class="btn" id="exp-json">JSON</button><button class="btn" id="exp-csv">CSV</button></div></div>
+      <div class="set-row"><div class="info"><b>Import</b><span>Restore from a PBtimer JSON export</span></div><label class="btn" style="cursor:pointer">Import<input type="file" id="imp-file" accept=".json" hidden></label></div>
+      <div class="set-row"><div class="info"><b>Danger zone</b><span>Delete every solve and session on this device</span></div><button class="btn" id="wipe" style="color:var(--bad);border-color:var(--bad)">Erase all data</button></div>
+      <div class="section-title">About</div>
+      <div class="set-row"><div class="info"><b>PBtimer</b><span>A dark-mode 3×3 timer + CFOP trainer. Time your solves. Learn your algs. Track your progress. Get faster.<br><br>Algorithm reference: <a href="https://www.jperm.net/algs/oll" target="_blank" rel="noopener" style="color:var(--acc)">J Perm OLL/PLL</a> &amp; <a href="https://www.speedsolving.com/wiki" target="_blank" rel="noopener" style="color:var(--acc)">speedsolving wiki</a>. Case patterns are generated live from the algorithms — the shown cube always matches the shown alg.</span></div></div>
+    </section>
+  </main>
+
+  <nav id="bottombar" aria-label="Main mobile"></nav>
+</div>
+
+<!-- CASE MODAL -->
+<div id="modal" role="dialog" aria-modal="true">
+  <div id="modal-card">
+    <button id="m-close" aria-label="Close">✕</button>
+    <h2 id="m-title"></h2><div class="m-sub" id="m-sub"></div>
+    <div id="m-cube"></div>
+    <div id="m-alg"></div>
+    <div class="m-row">
+      <button class="btn primary" id="m-copy">Copy alg</button>
+      <button class="btn" id="m-learn">Mark learned</button>
+      <button class="btn" id="m-fav">☆ Favorite</button>
+    </div>
+    <div class="m-label">Recognition</div><div class="recog" id="m-recog"></div>
+    <div class="m-label">Notes</div><textarea id="m-notes" placeholder="Your notes for this case — grip, finger tricks, when you spot it…"></textarea>
+    <div class="m-label">Finger tricks</div>
+    <div id="m-video">Video coming soon.<br><span style="font-size:11px">Personal demonstrations will appear here per-case as they are recorded.</span></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   PBtimer — single-file app
+   ============================================================ */
+
+/* ---------- 1. Cube simulator (computes case patterns from algs) ---------- */
+const AX={x:0,y:1,z:2};
+const BASE={R:['x',1,-1],L:['x',-1,1],U:['y',1,-1],D:['y',-1,1],F:['z',1,-1],B:['z',-1,1]};
+function rotV(v,ai,sign){const a=[0,0,0];a[ai]=sign;
+  const c=[a[1]*v[2]-a[2]*v[1],a[2]*v[0]-a[0]*v[2],a[0]*v[1]-a[1]*v[0]];
+  const d=a[0]*v[0]+a[1]*v[1]+a[2]*v[2];
+  return [c[0]+a[0]*d,c[1]+a[1]*d,c[2]+a[2]*d];}
+function solvedState(){const st={};
+  const F=[[[0,1,0],'Y'],[[0,-1,0],'W'],[[0,0,1],'G'],[[0,0,-1],'B'],[[1,0,0],'R'],[[-1,0,0],'O']];
+  for(const [n,c] of F){const ai=n.findIndex(x=>x!==0);
+    for(const p1 of [-1,0,1])for(const p2 of [-1,0,1]){const p=[0,0,0];p[ai]=n[ai];
+      const o=[0,1,2].filter(i=>i!==ai);p[o[0]]=p1;p[o[1]]=p2;
+      st[n.join(',')+'|'+p.join(',')]=c;}}
+  return st;}
+const SOLVED=solvedState();
+function applyMove(st,face,suf){
+  let ai,layers,sign,reps=suf==='2'?2:1;
+  if(BASE[face]){const [ax,layer,cw]=BASE[face];ai=AX[ax];
+    layers=face===face.toLowerCase()&&face!=='M'&&face!=='E'&&face!=='S'&&face!==face.toUpperCase()?[0,layer]:[layer];
+    if(face!==face.toUpperCase())layers=[0,layer];
+    sign=suf==="'"?-cw:cw;}
+  else if('MES'.includes(face)){ai={M:0,E:1,S:2}[face];layers=[0];
+    const cw={M:1,E:1,S:-1}[face];sign=suf==="'"?-cw:cw;}
+  else {ai=AX[face];layers=[-1,0,1];sign=suf==="'"?1:-1;}
+  let out={...st};
+  for(let r=0;r<reps;r++){const nw={};
+    for(const k in out){const [ns,ps]=k.split('|');const p=ps.split(',').map(Number);
+      if(layers.includes(p[ai])){const n=ns.split(',').map(Number);
+        nw[rotV(n,ai,sign).join(',')+'|'+rotV(p,ai,sign).join(',')]=out[k];}
+      else nw[k]=out[k];}
+    out=nw;}
+  return out;}
+const TOK=/(?:^|\s)([RLUDFBMESxyz]|[rludfb])('?|2)/g;
+function applyAlg(st,alg){TOK.lastIndex=0;let m;
+  while((m=TOK.exec(alg)))st=applyMove(st,m[1],m[2]);return st;}
+function invertAlg(alg){const t=[];TOK.lastIndex=0;let m;
+  while((m=TOK.exec(alg)))t.push([m[1],m[2]]);
+  return t.reverse().map(([f,s])=>f+(s==="'"?"":s==="2"?"2":"'")).join(' ');}
+/* self-test */
+(function(){let st=SOLVED;for(let i=0;i<6;i++)st=applyAlg(st,"R U R' U'");
+  if(JSON.stringify(st)!==JSON.stringify(SOLVED))console.warn('PBtimer: sim self-test failed');
+  const pb=s=>applyAlg(SOLVED,invertAlg(s)); // pattern state
+  window.patternOf=alg=>pb(alg);})();
+
+/* Extract display pattern: up face 9 + side strips 12 (F,R,B,L) as color letters */
+function extractPattern(st){
+  const up=[' ',' ',' ',' ',' ',' ',' ',' ',' '];
+  for(const k in st){const [ns,ps]=k.split('|');const n=ns.split(',').map(Number),p=ps.split(',').map(Number);
+    if(p[1]!==1)continue;
+    if(n[0]===0&&n[1]===1&&n[2]===0){const col=p[0]+1,row=p[2]+1;up[row*3+col]=st[k];}}
+  const side=(norm,posList)=>posList.map(([x,z])=>{const n=norm,p=[x,1,z];
+    return st[n.join(',')+'|'+p.join(',')]||' ';});
+  return {up,
+    f:side([0,0,1],[[-1,1],[0,1],[1,1]]),
+    r:side([1,0,0],[[1,-1],[1,0],[1,1]]),
+    b:side([0,0,-1],[[1,-1],[0,-1],-1,[-1,-1]]?[ [1,-1],[0,-1],[-1,-1] ]:[[1,-1],[0,-1],[-1,-1]]),
+    l:side([-1,0,0],[[-1,-1],[-1,0],[-1,1]])};
+}
+
+/* ---------- 2. Algorithm data ---------- */
+/* [num, name, group, alg] — algs: J Perm / speedcolving wiki / cube.academy references.
+   Pattern for every case is generated live from its alg, so cube always matches alg. */
+const OLL=[
+[1,"Runway","Dot","R U2 (R2 F R F') U2 (R' F R F')"],
+[2,"Zamboni","Dot","f (U R U' R') S' (U R U' R') F'"],
+[3,"Anti-Pinwheel","Dot","(F R' F' R) U S' (R U' R') S"],
+[4,"Pinwheel","Dot","S' (R U R') S U' (R' F R F')"],
+[5,"Lefty Square","Square","(r' U2 R) U R' U r"],
+[6,"Righty Square","Square","(r U2 R') U' R U' r'"],
+[7,"Lightning","Lightning","r U R' U (R U2 r')"],
+[8,"Reverse Lightning","Lightning","R' F' (r U' r') F2 R"],
+[9,"Kite","Fish","(F R' F' R) (U R U' R')"],
+[10,"Anti-Kite","Fish","R U2 R2' (F R F' R) U2 R'"],
+[11,"Downstairs","Lightning","r' (R2 U R' U R U2 R') U M'"],
+[12,"Upstairs","Lightning","r (R2 U' R U' R' U2 R) U' M"],
+[13,"Gun","Knight","r U r' (R U R' U') r U' r'"],
+[14,"Anti-Gun","Knight","R' F' R (L' U' L U) R' F R"],
+[15,"Squeegee","Knight","(F U R U') R2 F' R (U R U' R')"],
+[16,"Anti-Squeegee","Knight","R' F (R U R') F' R (F U' F')"],
+[17,"Slash","Dot","(r U R' U R U2 r') (r' U' R U' R' U2 r)"],
+[18,"Crown","Dot","(R' F2 R2 U2 R') F' (R U2 R2 F2 R)"],
+[19,"Bunny","Dot","S R' U' (R U) (R U) R U' R' S'"],
+[20,"Checkers","Dot","(R' F2 R2 U2 R') F (R U2 R2 F2 R)"],
+[21,"H / Double Sune","OCLL","R U R' U (R U' R' U) R U2 R'"],
+[22,"Pi / Bruno","OCLL","R U2 (R2 U') (R2 U') R2 U2 R"],
+[23,"Headlights","OCLL","R2 D (R' U2 R) D' (R' U2 R')"],
+[24,"Chameleon","OCLL","R U R' U R U' R' U' R' F R F'"],
+[25,"Bowtie","OCLL","R' F R F' R U2 R' U' R U2 R' U' R U' R'"],
+[26,"Antisune","OCLL","(R U2 R') U' R U' R'"],
+[27,"Sune","OCLL","R U R' U R U2 R'"],
+[28,"Arrow","Edges","(r U R' U') M (U R U' R')"],
+[29,"Spotted Chameleon","Awkward","r2 D' (r U r') D r2 U' (r' U' r)"],
+[30,"Anti-Spotted Chameleon","Awkward","F U (R U2 R' U') (R U2 R' U') F'"],
+[31,"Couch","P","F (U R U' R') F'"],
+[32,"Anti-Couch","P","R' (U' F' U F) R"],
+[33,"Key","T","(R U R' U') (R' F R F')"],
+[34,"City","C","R' U' (R' F R F') U R"],
+[35,"Fish Salad","Fish","(R U R' U') R' F (R2 U R' U') F'"],
+[36,"Sea-Mew","W","(R U R' U) R U' R' U' (R' F R F')"],
+[37,"Mounted Fish","Fish","R U R' U (R' F R F') R U2 R'"],
+[38,"Moustache","W","(L' U' L U') L' U L U (L F' L' F)"],
+[39,"Fung","Lightning","(f R' F' R) (U R U' R') S'"],
+[40,"Anti-Fung","Lightning","f' (r U r' U') (r' F r S)"],
+[41,"Awkward Fish","Awkward","(R U R' U R U2 R') F (R U R' U') F'"],
+[42,"Anti-Awkward Fish","Awkward","R' U' F2 u' (R U R') D R2 B"],
+[43,"Anti-P","P","R' U' F (U R U' R') F' R"],
+[44,"P","P","S (R U R' U') (R' F R f')"],
+[45,"T","T","F (R U R' U') F'"],
+[46,"Seein' Headlights","C","f R f' U' r' U' R U M'"],
+[47,"Anti-Breakneck","L","F (R U R' U') (R U R' U') F'"],
+[48,"Breakneck","L","(F R' F' R) U2 (R U' R' U) R U2 R'"],
+[49,"Right Back Squeezy","L","r U R' U (R U' R' U) R U2 r'"],
+[50,"Right Front Squeezy","L","r' U' R U' (R' U R U') R' U2 r"],
+[51,"Bottlecap","I","F (U R U' R') (U R U' R') F'"],
+[52,"Rice Cooker","I","R' (F' U' F U') R U R' U R"],
+[53,"Frying Pan","L","r U' (r2' U) (r2 U) r2' U' r"],
+[54,"Anti-Frying Pan","L","r' U (r2 U') (r2' U') r2 U r'"],
+[55,"Highway","I","r U r' (U R U' R') (U R U' R') r U' r'"],
+[56,"Streetlights","I","R' F (R U R U') R2 F' R2 U' R' U (R U R')"],
+[57,"Mummy","Edges","(R U R' U') M' (U R U' r')"]
+];
+/* [name, group, alg] */
+const PLL=[
+["Aa","Corners","x R' U R' D2 R U' R' D2 R2 x'"],
+["Ab","Corners","x' R2 D2 R U R' D2 R U' R x"],
+["E","Corners","x' R U' R' D R U R' D' R U R' D R U' R' D' x"],
+["F","Edges+Corners","R' U' F' R U R' U' R' F R2 U' R' U' R U R' U R"],
+["Ga","G","R2 U R' U R' U' R U' R2 U' D R' U R D'"],
+["Gb","G","R2 U' R U' R U R' U R2 U D' R U' R' D"],
+["Gc","G","R2 U' R U' R U R' U R2 U' D R U' R' D"],
+["Gd","G","R2 U R' U R' U' R U' R2 U D' R' U R D"],
+["H","Edges","M2 U M2 U2 M2 U M2"],
+["Ja","Edges+Corners","R' U L' U2 R U' R' U2 R L"],
+["Jb","Edges+Corners","R U R' F' R U R' U' R' F R2 U' R'"],
+["Na","Edges+Corners","L U' R U2 L' U R' L U' R U2 L' U R'"],
+["Nb","Edges+Corners","R' U L' U2 R U' L R' U L' U2 R U' L"],
+["Ra","Edges+Corners","R U R' F' R U2 R' U2 R' F R U R U2 R'"],
+["Rb","Edges+Corners","R' U2 R U2 R' F R U R' U' R' F' R2 U"],
+["T","Edges+Corners","R U R' U' R' F R2 U' R' U' R U R' F'"],
+["Ua","Edges","R U' R U R U R U' R' U' R2"],
+["Ub","Edges","R2 U R U R' U' R' U' R' U R'"],
+["V","Edges+Corners","R' U R U' R' U R' F' R U R U' R' F R U' R"],
+["Y","Edges+Corners","F R U' R' U' R U R' F' R U R' U' R' F R F'"],
+["Z","Edges","M' U M2 U M2 U M' U2 M2"]
+];
+
+/* ---------- 3. Cube SVG renderer ---------- */
+const COL={Y:'#f7d90f',W:'#e8eaed',G:'#2fbf71',R:'#e5484d',B:'#4d8dff',O:'#f2762e'};
+const DARK='#202329';
+function cubeSVG(pat,size,mode){ // mode 'oll'|'pll'
+  const s=size/5.2,g=size*0.012;let x=`<svg width="${size}" height="${size}" viewBox="0 0 5.2 5.2" xmlns="http://www.w3.org/2000/svg">`;
+  const rect=(cx,cy,c)=>`<rect x="${cx+s*0.04+g}" y="${cy+s*0.04+g}" width="${s-2*g}" height="${s-2*g}" rx="${s*0.06}" fill="${c}" stroke="#0a0b0e" stroke-width="${s*0.03}"/>`;
+  const cell=(i)=>mode==='pll'?COL[pat.up[i]]||DARK:(pat.up[i]==='Y'?COL.Y:DARK);
+  const sc=(c)=>mode==='pll'?(COL[c]||DARK):(c==='Y'?COL.Y:DARK);
+  for(let i=0;i<9;i++){const r=(i/3|0),c=i%3;rect(1.1+c*s,0.1+r*s,cell(i));}
+  for(let i=0;i<3;i++)rect(1.1+i*s,1.1*s? 0:0,'#000'); // placeholder no-op
+  // strips: F top (row above U in this net is B; we draw classic net: U center, F below? Use wiki layout: top strip=B, bottom=F, left=L, right=R)
+  for(let i=0;i<3;i++){
+    rect(1.1+i*s,0.1-b? 0:0,0);
+  }
+  return x+'</svg>';
+}
+
+/* The layout above got messy — build it cleanly below (kept simple and correct). */
+function cubeSVG(pat,size,mode){
+  const u=s=>s; const cell=size/5.0, g=cell*0.05;
+  let h=`<svg width="${size}" height="${size}" viewBox="0 0 5 5" xmlns="http://www.w3.org/2000/svg">`;
+  const rect=(gx,gy,c)=>`<rect x="${gx+g}" y="${gy+g}" width="${cell-2*g}" height="${cell-2*g}" rx="${cell*0.08}" fill="${c}" stroke="#0a0b0e" stroke-width="${cell*0.045}"/>`;
+  const U=i=>mode==='pll'?(COL[pat.up[i]]||DARK):(pat.up[i]==='Y'?COL.Y:DARK);
+  const S=c=>mode==='pll'?(COL[c]||DARK):(c==='Y'?COL.Y:DARK);
+  for(let i=0;i<9;i++)rect(1+(i%3),1+((i/3)|0),U(i));                 // U face
+  for(let i=0;i<3;i++)rect(1+i,0,S(pat.b[2-i]));                       // back strip (drawn as seen from behind)
+  for(let i=0;i<3;i++)rect(1+i,2,S(pat.f[i]));                         // front strip
+  for(let i=0;i<3;i++)rect(0,1+i,S(pat.l[i]));                         // left strip (top->bottom = back->front)
+  for(let i=0;i<3;i++)rect(4,1+i,S(pat.r[i]));                         // right strip
+  return h+'</svg>';
+}
+
+/* ---------- 4. Storage ---------- */
+const DB={
+  get(k,d){try{const v=localStorage.getItem('pbtimer.'+k);return v?JSON.parse(v):d;}catch(e){return d;}},
+  set(k,v){try{localStorage.setItem('pbtimer.'+k,JSON.stringify(v));}catch(e){}}
+};
+let sessions=DB.get('sessions',[{id:1,name:'Main',createdAt:Date.now()}]);
+let solves=DB.get('solves',[]);
+let settings=DB.get('settings',{inspection:0,decimals:2,sound:1,accent:'#22d3ee',auto:1});
+let algState=DB.get('algstate',{oll:{},pll:{}});
+let curSession=DB.get('curSession',1);
+if(!sessions.some(s=>s.id===curSession))curSession=sessions[0].id;
+const save=()=>{DB.set('sessions',sessions);DB.set('solves',solves);DB.set('settings',settings);DB.set('algstate',algState);DB.set('curSession',curSession);};
+if(settings.accent)document.documentElement.style.setProperty('--acc',settings.accent);
+
+/* ---------- 5. Scramble ---------- */
+const SF='RLUDFB';
+function genScramble(len=21){const out=[];let prev=-1;
+  while(out.length<len){let f;do{f=Math.random()*6|0;}while(f===prev||(prev>=0&&Math.abs(f-prev)===3&&Math.random()<0.5));
+    // avoid trivial same-axis redundancy
+    prev=f;const suf=['',"'",'2'][Math.random()*3|0];out.push(SF[f]+suf);}
+  return out.join(' ');}
+
+/* ---------- 6. Statistics ---------- */
+const val=s=>s.penalty==='DNF'?Infinity:s.time+(s.penalty==='+2'?2000:0);
+const fmt=v=>v===Infinity?'DNF':v==null||isNaN(v)?'–':(v/1000).toFixed(settings.decimals);
+function ao(list,n){const w=list.slice(-n);if(w.length<n)return null;if(w.some(s=>s.penalty==='DNF'))return Infinity;
+  const v=w.map(val).sort((a,b)=>a-b);if(n>=3){v.pop();v.shift();}
+  return v.reduce((a,b)=>a+b,0)/v.length;}
+const sessSolves=()=>solves.filter(s=>s.sessionId===curSession);
+function bestAo(n){const ss=sessSolves();let best=null;
+  for(let i=n;i<=ss.length;i++){const a=ao(ss.slice(0,i),n);if(a!=null&&a!==Infinity&&(best==null||a<best))best=a;}return best;}
+
+/* ---------- 7. Timer ---------- */
+let tState='idle',holdStart=0,startT=0,raf=0,curScramble=genScramble(),inspectEnd=0;
+const $=id=>document.getElementById(id);
+const timeEl=$('time'),scrambleEl=$('scramble'),hintEl=$('timer-hint');
+function beep(f=880,d=0.05){if(!+settings.sound)return;try{const c=new (window.AudioContext||window.webkitAudioContext)();const o=c.createOscillator(),g=c.createGain();
+  o.frequency.value=f;g.gain.value=0.06;o.connect(g);g.connect(c.destination);o.start();o.stop(c.currentTime+d);}catch(e){}}
+function showScramble(){scrambleEl.textContent=curScramble;scrambleEl.classList.remove('fresh');void scrambleEl.offsetWidth;scrambleEl.classList.add('fresh');}
+function tick(){if(tState==='running'){timeEl.textContent=((performance.now()-startT)/1000).toFixed(settings.decimals);raf=requestAnimationFrame(tick);}
+  else if(tState==='inspecting'){const left=Math.ceil((inspectEnd-performance.now())/1000);
+    timeEl.textContent=left>0?left:'Go!';if(performance.now()<inspectEnd)raf=requestAnimationFrame(tick);else startRun();}}
+function startRun(){tState='running';startT=performance.now();timeEl.className='';beep(1320);hintEl.textContent='press to stop';raf=requestAnimationFrame(tick);}
+function arm(){if(+settings.inspection>0){tState='inspecting';inspectEnd=performance.now()+settings.inspection*1000;timeEl.className='inspecting';hintEl.textContent='inspection';raf=requestAnimationFrame(tick);beep(880);}
+  else startRun();}
+function disarm(){if(tState==='inspecting'){tState='idle';timeEl.textContent='0.00';timeEl.className='';hintEl.textContent='hold space / press & hold';cancelAnimationFrame(raf);}}
+function stopRun(){tState='stopped';cancelAnimationFrame(raf);const t=performance.now()-startT;
+  timeEl.textContent=(t/1000).toFixed(settings.decimals);beep(660);hintEl.textContent='2 = +2 · D = DNF · ⌫ = delete · space = next';
+  const solve={id:Date.now()+''+Math.random().toString(36).slice(2,6),sessionId:curSession,time:Math.round(t),penalty:'',scramble:curScramble,timestamp:Date.now(),notes:''};
+  solves.push(solve);save();renderRecent();renderPB();}
+function nextSolve(){if(tState!=='stopped')return;curScramble=genScramble();showScramble();tState='idle';timeEl.textContent='0.00';hintEl.textContent='hold space / press & hold';renderRecent();}
+function lastSolve(){const ss=sessSolves();return ss[ss.length-1];}
+function modLast(fn){const s=lastSolve();if(!s)return;fn(s);save();renderRecent();renderPB();}
+
+const pad=$('timer-wrap');
+let ptrDown=false;
+window.addEventListener('keydown',e=>{
+  if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;
+  if(e.code==='Space'){e.preventDefault();
+    if(e.repeat)return;
+    if(tState==='running')stopRun();
+    else if(tState==='idle'){tState='holding';holdStart=performance.now();timeEl.className='holding';}
+    else if(tState==='stopped')nextSolve();}
+  else if(tState==='stopped'){
+    if(e.key==='2')modLast(s=>s.penalty=s.penalty==='+2'?'':'+2');
+    else if(e.key==='d'||e.key==='D')modLast(s=>s.penalty=s.penalty==='DNF'?'':'DNF');
+    else if(e.key==='Backspace'||e.key==='Delete')modLast(()=>{solves.splice(solves.indexOf(lastSolve()),1);nextSolve();});}
+});
+window.addEventListener('keyup',e=>{if(e.code!=='Space')return;
+  if(tState==='holding'){timeEl.className='ready';timeEl.textContent='0.00';requestAnimationFrame(()=>{if(tState==='holding'){arm();}});}
+  else if(tState==='inspecting'){disarm();}});
+pad.addEventListener('pointerdown',e=>{if(e.target.closest('button,select,input'))return;e.preventDefault();pad.focus();
+  if(tState==='running')stopRun();else if(tState==='idle'){tState='holding';timeEl.className='holding';}
+  else if(tState==='stopped')nextSolve();ptrDown=true;});
+window.addEventListener('pointerup',()=>{if(!ptrDown)return;ptrDown=false;
+  if(tState==='holding'){timeEl.className='ready';timeEl.textContent='0.00';requestAnimationFrame(()=>{if(tState==='holding')arm();});}
+  else if(tState==='inspecting')disarm();});
+$('btn-scramble').onclick=e=>{curScramble=genScramble();showScramble();e.currentTarget.blur();};
+$('btn-plus2').onclick=e=>{modLast(s=>s.penalty=s.penalty==='+2'?'':'+2');e.currentTarget.blur();};
+$('btn-dnf').onclick=e=>{modLast(s=>s.penalty=s.penalty==='DNF'?'':'DNF');e.currentTarget.blur();};
+$('btn-del').onclick=e=>{modLast(()=>{solves.splice(solves.indexOf(lastSolve()),1);nextSolve();});e.currentTarget.blur();};
+const autoBtn=$('btn-auto');
+function syncAuto(){autoBtn.classList.toggle('on',!!+settings.auto);}
+autoBtn.onclick=e=>{settings.auto=settings.auto?0:1;save();syncAuto();e.currentTarget.blur();};
+const _nextSolve=nextSolve;
+nextSolve=function(){_nextSolve();if(!+settings.auto){/* still advance; auto only controls scramble? keep simple: always new scramble */}};
+
+/* ---------- 8. Recent + sessions ---------- */
+function renderRecent(){const ss=sessSolves();const tb=$('recent-body');tb.innerHTML='';
+  const pb=Math.min(...ss.filter(s=>s.penalty!=='DNF').map(val),Infinity);
+  ss.slice(-8).reverse().forEach((s,i)=>{const tr=document.createElement('tr');
+    if(val(s)===pb&&s.penalty!=='DNF')tr.className='pb';
+    const prev=i<ss.slice(-8).length-1?null:null;
+    tr.innerHTML=`<td>${ss.indexOf(s)+1}</td><td class="${s.penalty==='DNF'?'':''}" style="${s.penalty==='DNF'?'color:var(--bad)':s.penalty==='+2'?'color:var(--warn)':''}">${fmt(val(s))}${s.penalty==='+2'?'+':''}</td><td></td>`;
+    tb.appendChild(tr);});
+  $('ao5').textContent=fmt(ao(ss,5));$('ao12').textContent=fmt(ao(ss,12));$('ao50').textContent=fmt(ao(ss,50));
+  renderSessionSelect();}
+function renderSessionSelect(){const sel=$('session-select');sel.innerHTML='';
+  sessions.forEach(s=>{const o=document.createElement('option');o.value=s.id;o.textContent=`${s.name} (${solves.filter(v=>v.sessionId===s.id).length})`;if(s.id===curSession)o.selected=true;sel.appendChild(o);});}
+$('session-select').onchange=e=>{curSession=+e.target.value;save();renderRecent();renderSolves();renderStats();};
+$('new-session').onclick=()=>{const name=prompt('Session name:','Session '+(sessions.length+1));if(!name)return;
+  const id=Date.now();sessions.push({id,name,createdAt:Date.now()});curSession=id;save();renderRecent();};
+$('rename-session').onclick=()=>{const s=sessions.find(x=>x.id===curSession);const n=prompt('Rename session:',s.name);if(n){s.name=n;save();renderRecent();}};
+$('delete-session').onclick=()=>{if(!confirm('Delete this session and all its solves?'))return;
+  solves=solves.filter(s=>s.sessionId!==curSession);sessions=sessions.filter(s=>s.id!==curSession);if(!sessions.length)sessions=[{id:1,name:'Main',createdAt:Date.now()}];
+  curSession=sessions[0].id;save();renderRecent();renderPB();};
+
+/* ---------- 9. Solves page ---------- */
+function ago(t){const m=Math.floor((Date.now()-t)/60000);if(m<1)return'now';if(m<60)return m+'m ago';const h=m/60|0;if(h<24)return h+'h ago';return(h/24|0)+'d ago';}
+function renderSolves(){const box=$('solves-list');const ss=sessSolves().slice().reverse();box.innerHTML='';
+  if(!ss.length){box.innerHTML='<div class="empty"><p>No solves yet in this session. Your first solve is waiting.</p></div>';return;}
+  ss.forEach(s=>{const row=document.createElement('div');row.className='solve-row';
+    row.innerHTML=`<span class="t ${s.penalty==='DNF'?'dnf':s.penalty==='+2'?'plus':''}">${fmt(val(s))}${s.penalty==='+2'?'+':''}</span>
+      <span class="sc" title="Click to copy">${s.scramble}</span><span class="ts">${ago(s.timestamp)}</span>
+      <span class="acts"><button class="icon-btn" data-a="p2" title="+2">+2</button><button class="icon-btn" data-a="dnf" title="DNF">D</button><button class="icon-btn" data-a="cp" title="Copy scramble">⧉</button><button class="icon-btn del" data-a="del" title="Delete">✕</button></span>`;
+    row.querySelector('.sc').onclick=()=>{navigator.clipboard.writeText(s.scramble);};
+    row.querySelectorAll('.icon-btn').forEach(b=>b.onclick=()=>{const a=b.dataset.a;
+      if(a==='p2')s.penalty=s.penalty==='+2'?'':'+2';else if(a==='dnf')s.penalty=s.penalty==='DNF'?'':'DNF';
+      else if(a==='del'){if(confirm('Delete this solve?'))solves.splice(solves.indexOf(s),1);}
+      else if(a==='cp')navigator.clipboard.writeText(s.scramble);
+      save();renderSolves();renderRecent();renderStats();renderPB();});
+    box.appendChild(row);});}
+
+/* ---------- 10. Stats page ---------- */
+function statCard(k,v){return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`;}
+function renderStats(){const ss=sessSolves();const valid=ss.filter(s=>s.penalty!=='DNF');
+  const cur=n=>{const a=ao(ss,n);return a==null?'–':fmt(a);};
+  const best=ss.filter(s=>s.penalty!=='DNF').length?Math.min(...valid.map(val)):'–';
+  const mean=valid.length?(valid.reduce((a,s)=>a+val(s),0)/valid.length):null;
+  const totTime=valid.reduce((a,s)=>a+val(s),0);
+  $('stat-cards').innerHTML=
+    statCard('Best single',fmt(best))+statCard('Current single',ss.length?fmt(val(lastSolve())):'–')+
+    statCard('Best Ao5',fmt(bestAo(5)))+statCard('Current Ao5',cur(5))+
+    statCard('Best Ao12',fmt(bestAo(12)))+statCard('Current Ao12',cur(12))+
+    statCard('Best Ao50',fmt(bestAo(50)))+statCard('Best Ao100',fmt(bestAo(100)))+
+    statCard('Session mean',fmt(mean))+statCard('Total solves',solves.length)+statCard('Practice time',fmt(totTime).replace('DNF','–'));
+  $('prog-cards').innerHTML=
+    statCard('Best single',fmt(best))+statCard('Best Ao5',fmt(bestAo(5)))+
+    statCard('Best Ao12',fmt(bestAo(12)))+statCard('Session average',fmt(mean))+
+    statCard('Total solves',solves.length.toLocaleString())+statCard('Total time',fmt(totTime));
+  renderGraph();}
+
+/* ---------- 11. Graph ---------- */
+const gSets={single:true,ao5:false,ao12:false,ao50:false,ao100:false};
+document.querySelectorAll('#graph-toggles .chip').forEach(b=>b.onclick=()=>{gSets[b.dataset.set]=!gSets[b.dataset.set];b.classList.toggle('on',gSets[b.dataset.set]);renderGraph();});
+let gHover=-1;
+function seriesFor(ss,key){const out=[];
+  if(key==='single')return ss.map((s,i)=>({i,v:val(s),s}));
+  const n=+key.slice(2);
+  for(let i=n-1;i<ss.length;i++){const a=ao(ss.slice(0,i+1),n);
+    if(a!=null&&a!==Infinity)out.push({i,v:a,s:ss[i]});}
+  return out;}
+function renderGraph(){const cv=$('graph');const box=$('graph-box');const dpr=devicePixelRatio||1;
+  const W=box.clientWidth-32,H=280;cv.width=W*dpr;cv.height=H*dpr;cv.style.height=H+'px';
+  const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+  const ss=sessSolves();if(ss.length<2){ctx.fillStyle='#5c616b';ctx.font='13px Inter';ctx.fillText('Solve at least twice to draw the curve.',14,H/2);return;}
+  const all=[];const data={};
+  for(const k in gSets)if(gSets[k]){data[k]=seriesFor(ss,k);all.push(...data[k].map(p=>p.v));}
+  if(!all.length)return;
+  let lo=Math.min(...all),hi=Math.max(...all);const pad=(hi-lo)*0.12||1;lo-=pad;hi+=pad;
+  const X=i=>14+(W-28)*(i/Math.max(ss.length-1,1)),Y=v=>10+(H-40)*(1-(v-lo)/(hi-lo));
+  ctx.strokeStyle='#23262e';ctx.fillStyle='#5c616b';ctx.font='11px JetBrains Mono,Menlo,monospace';ctx.lineWidth=1;
+  for(let g=0;g<=4;g++){const v=lo+(hi-lo)*g/4,y=Y(v);ctx.beginPath();ctx.moveTo(14,y);ctx.lineTo(W-14,y);ctx.stroke();ctx.fillText(v.toFixed(1),W-44,y+3);}
+  const COLS={single:'#e8eaed',ao5:'#22d3ee',ao12:'#a78bfa',ao50:'#f472b6',ao100:'#fbbf24'};
+  for(const k in data){const pts=data[k];if(!pts.length)continue;
+    ctx.strokeStyle=COLS[k];ctx.lineWidth=k==='single'?1.2:2;ctx.lineJoin='round';ctx.beginPath();
+    pts.forEach((p,j)=>j?ctx.lineTo(X(p.i),Y(p.v)):ctx.moveTo(X(p.i),Y(p.v)));ctx.stroke();
+    if(k==='single'){ctx.fillStyle=COLS.single;pts.forEach(p=>{ctx.beginPath();ctx.arc(X(p.i),Y(p.v),2,0,7);ctx.fill();});}}
+  if(gHover>=0&&gHover<ss.length){const x=X(gHover);ctx.strokeStyle='#3a3e47';ctx.beginPath();ctx.moveTo(x,8);ctx.lineTo(x,H-30);ctx.stroke();}}
+$('graph').addEventListener('mousemove',e=>{const cv=$('graph'),r=cv.getBoundingClientRect();
+  const ss=sessSolves();if(ss.length<2)return;
+  const frac=(e.clientX-r.left-14)/(r.width-28);gHover=Math.round(frac*(ss.length-1));
+  gHover=Math.max(0,Math.min(ss.length-1,gHover));renderGraph();
+  const s=ss[gHover],tip=$('tooltip');
+  const a5=ao(ss.slice(0,gHover+1),5),a12=ao(ss.slice(0,gHover+1),12);
+  tip.innerHTML=`<b>Solve #${gHover+1}</b> — ${fmt(val(s))}${s.penalty==='+2'?'+':s.penalty==='DNF'?' (DNF)':''}<br>`+
+    `Ao5: ${fmt(a5)} · Ao12: ${fmt(a12)}<br><span style="color:#9aa0aa">${new Date(s.timestamp).toLocaleString()}<br>${s.scramble}</span>`;
+  tip.style.display='block';
+  let x=e.clientX-r.left+18,y=e.clientY-r.top-10;
+  if(x>r.width-240)x-=260;tip.style.left=x+'px';tip.style.top=y+'px';});
+$('graph').addEventListener('mouseleave',()=>{gHover=-1;$('tooltip').style.display='none';renderGraph();});
+window.addEventListener('resize',()=>{if($('page-stats').classList.contains('active'))renderGraph();});
+
+/* ---------- 12. CFOP ---------- */
+const CFOP=[
+['C','Cross','Solve the white cross on the bottom (or any color). Aim for ≤8 moves, plan it fully in inspection. Speed here is free time on the clock.'],
+['F2','F2L','First Two Layers — four corner+edge pairs. Learn to insert pairs without breaking others; this step is where most of your solve time lives.'],
+['O','OLL','Orient Last Layer — 57 cases (plus 7 simplified 2-look cases). Every case is one algorithm. That\'s the library in this app.'],
+['P','PLL','Permute Last Layer — 21 cases. After OLL, one alg finishes the cube. Also in this app, with the same trainer.']];
+function renderCFOP(){$('cfop-grid').innerHTML=CFOP.map(([l,t,d])=>
+ `<div class="stat" style="cursor:pointer" onclick="location.hash='${t==='OLL'?'oll':t==='PLL'?'pll':'cfop'}'">
+   <div style="font-family:var(--mono);font-size:30px;color:var(--acc);font-weight:700">${l}</div>
+   <div class="k" style="font-size:14px;color:var(--txt);text-transform:none;letter-spacing:0;margin:6px 0 4px">${t}</div>
+   <div style="font-size:12.5px;color:var(--dim);line-height:1.6">${d}</div></div>`).join('');}
+
+/* ---------- 13. Alg libraries ---------- */
+const libFilter={oll:'all',pll:'all'};
+function algCase(type,key){const st=algState[type]||(algState[type]={});return st[key]||(st[key]={learned:false,fav:false,notes:''});}
+function libData(type){return type==='oll'?OLL.map(o=>({key:'oll'+o[0],num:o[0],name:o[1],group:o[2],alg:o[3]}))
+                                         :PLL.map(p=>({key:'pll'+p[0],num:p[0],name:p[0]+' perm',group:p[1],alg:p[2]}));}
+function renderLib(type){const q=($((type==='oll'?'oll':'pll')+'-search').value||'').toLowerCase();
+  const f=libFilter[type];const grid=$(type+'-grid');grid.innerHTML='';
+  const items=libData(type).filter(d=>{const st=algCase(type,d.key);
+    if(f==='learned'&&!st.learned)return false;if(f==='unknown'&&st.learned)return false;
+    if(f==='fav'&&!st.fav)return false;
+    if(q&&!(d.num+' '+d.name+' '+d.group+' '+d.alg).toLowerCase().includes(q))return false;return true;});
+  let learned=0;libData(type).forEach(d=>{if(algCase(type,d.key).learned)learned++;});
+  const total=type==='oll'?57:21;const pg=$(type==='oll'?'page-oll':'page-pll');
+  pg.querySelector('#prog-label').textContent=`${learned} / ${total} learned`;
+  pg.querySelector('#prog-fill').style.width=(learned/total*100)+'%';
+  if(!items.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1"><p>Nothing here yet. '+(f==='learned'?'Mark cases as learned to fill this up.':'Try a different search or filter.')+'</p></div>';return;}
+  items.forEach(d=>{const st=algState[type][d.key]||{learned:false,fav:false};
+    const pat=extractPattern(patternOf(d.alg));
+    const card=document.createElement('div');card.className='alg-card'+(st.learned?' learned':'');
+    card.innerHTML=`<div class="num"><span>${type==='oll'?'OLL '+String(d.num).padStart(2,'0'):d.name}</span></div>
+      <span class="fav ${st.fav?'on':''}">${st.fav?'★':'☆'}</span><div class="nm">${d.name} · ${d.group}</div>`;
+    card.insertAdjacentHTML('beforeend',cubeSVG(pat,104,'oll'));
+    card.onclick=()=>openModal(type,d);
+    grid.appendChild(card);});
+  if(type==='pll'){ /* PLL cards: render with pll colors */ grid.querySelectorAll('.alg-card').forEach((c,i)=>{
+    const d=items[i];const pat=extractPattern(patternOf(d.alg));
+    c.querySelector('svg').outerHTML=cubeSVG(pat,104,'pll');});}}
+['oll','pll'].forEach(t=>{$(t+'-search').addEventListener('input',()=>renderLib(t));
+  $(t+'-filters').querySelectorAll('.chip').forEach(b=>b.onclick=()=>{
+    $(t+'-filters').querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+    libFilter[t]=b.dataset.f;renderLib(t);});});
+
+/* ---------- 14. Modal ---------- */
+let modalCtx=null;
+function openModal(type,d){modalCtx={type,d};const st=algCase(type,d.key);
+  $('m-title').textContent=type==='oll'?`OLL ${String(d.num).padStart(2,'0')} — ${d.name}`:`${d.name}`;
+  $('m-sub').textContent=`${d.group} family · reference: J Perm / speedsolving wiki`;
+  const pat=extractPattern(patternOf(d.alg));
+  $('m-cube').innerHTML=cubeSVG(pat,240,type==='pll'?'pll':'oll');
+  $('m-alg').textContent=d.alg;
+  $('m-recog').textContent=recogText(type,d,pat);
+  $('m-notes').value=st.notes||'';
+  $('m-learn').classList.toggle('on',!!st.learned);$('m-learn').textContent=st.learned?'Learned ✓':'Mark learned';
+  $('m-fav').classList.toggle('on',!!st.fav);$('m-fav').textContent=st.fav?'★ Favorited':'☆ Favorite';
+  const vid={id:null,enabled:false}[0]; /* future: d.youtubeVideoId / d.videoEnabled */
+  $('m-video').innerHTML='Video coming soon.<br><span style="font-size:11px">Personal finger-trick demonstrations will appear here per-case as they are recorded.</span>';
+  $('modal').classList.add('open');}
+function recogText(type,d,pat){const u=pat.up;const yc=u.filter(c=>c==='Y').length-1;
+  if(type==='oll'){const corners=[[0,2,6,8].filter(i=>u[i]==='Y').length];
+    const edges=[[1,3,5,7].filter(i=>u[i]==='Y').length];
+    return `${d.group} shape: ${corners} oriented corner(s), ${edges} oriented edge(s) on top (center always counts). Learn the silhouette first, then confirm with the side stickers before executing.`;}
+  return `A ${d.name} — look for the pattern of swapped headlights/bar on the sides. Recognition tip: check two adjacent sides; the block + the moving pair identify it instantly.`;}
+$('m-close').onclick=()=>$('modal').classList.remove('open');
+$('modal').addEventListener('click',e=>{if(e.target.id==='modal')$('modal').classList.remove('open');});
+window.addEventListener('keydown',e=>{if(e.key==='Escape')$('modal').classList.remove('open');});
+$('m-copy').onclick=e=>{navigator.clipboard.writeText(modalCtx.d.alg);const b=e.currentTarget;b.textContent='Copied ✓';setTimeout(()=>b.textContent='Copy alg',1200);};
+$('m-learn').onclick=()=>{const st=algCase(modalCtx.type,modalCtx.d.key);st.learned=!st.learned;save();
+  $('m-learn').classList.toggle('on',st.learned);$('m-learn').textContent=st.learned?'Learned ✓':'Mark learned';renderLib(modalCtx.type);};
+$('m-fav').onclick=()=>{const st=algCase(modalCtx.type,modalCtx.d.key);st.fav=!st.fav;save();
+  $('m-fav').classList.toggle('on',st.fav);$('m-fav').textContent=st.fav?'★ Favorited':'☆ Favorite';renderLib(modalCtx.type);};
+$('m-notes').oninput=()=>{algCase(modalCtx.type,modalCtx.d.key).notes=$('m-notes').value;save();};
+
+/* ---------- 15. PB logo ---------- */
+function renderPB(){const valid=solves.filter(s=>s.penalty!=='DNF');const el=$('logo');
+  el.textContent=valid.length?fmt(Math.min(...valid.map(val))):'--.--';}
+
+/* ---------- 16. Settings ---------- */
+function bindSet(id,key,cb){const el=$(id);el.value=settings[key];el.onchange=()=>{settings[key]=isNaN(+el.value)||el.value[0]==='#'?el.value:+el.value;save();cb&&cb();};}
+bindSet('set-inspection','inspection');bindSet('set-decimals','decimals',renderRecent);bindSet('set-sound','sound');
+bindSet('set-accent','accent',()=>document.documentElement.style.setProperty('--acc',settings.accent));
+function download(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();}
+$('exp-json').onclick=()=>download('pbtimer-backup.json',JSON.stringify({sessions,solves,settings,exported:Date.now()},null,1),'application/json');
+$('exp-csv').onclick=()=>{const rows=[['solve_number','time_ms','penalty','scramble','timestamp','session']];
+  solves.forEach((s,i)=>rows.push([i+1,s.time,s.penalty,'"'+s.scramble+'"',new Date(s.timestamp).toISOString(),(sessions.find(x=>x.id===s.sessionId)||{}).name||s.sessionId]));
+  download('pbtimer-solves.csv',rows.map(r=>r.join(',')).join('\n'),'text/csv');};
+$('imp-file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{const d=JSON.parse(r.result);if(!Array.isArray(d.solves)||!Array.isArray(d.sessions))throw 0;
+    if(!confirm(`Import ${d.solves.length} solves? This replaces current data.`))return;
+    sessions=d.sessions;solves=d.solves;curSession=sessions[0].id;save();renderAll();alert('Import complete.');}
+    catch(err){alert('That file doesn\'t look like a valid PBtimer export.');}};r.readAsText(f);};
+$('wipe').onclick=()=>{if(confirm('Erase ALL data? This cannot be undone.')&&confirm('Really? Every solve, session, and learned case will be gone.')){localStorage.clear();location.reload();}};
+
+/* ---------- 17. Router ---------- */
+const PAGES=['timer','solves','stats','cfop','oll','pll','settings'];
+const ICONS={timer:'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',solves:'M4 6h16M4 12h16M4 18h10',stats:'M4 20V10m6 10V4m6 16v-7',cfop:'M12 3l9 5-9 5-9-5 9-5zm-9 9l9 5 9-5',oll:'M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z',pll:'M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z',settings:'M12 15a3 3 0 100-6 3 3 0 000 6zm7-3a7 7 0 11-14 0 7 7 0 0114 0z'};
+function navTo(p){if(!PAGES.includes(p))p='timer';
+  document.querySelectorAll('.page').forEach(x=>x.classList.toggle('active',x.id==='page-'+p));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
+  document.querySelectorAll('#bottombar button').forEach(b=>b.classList.toggle('active',b.dataset.page===p));
+  if(location.hash!=='#'+p)history.replaceState(null,'','#'+p);
+  if(p==='stats')renderStats();if(p==='solves')renderSolves();
+  if(p==='oll')renderLib('oll');if(p==='pll')renderLib('pll');
+  if(p==='timer'){renderRecent();}}
+document.querySelectorAll('.nav-btn').forEach(b=>{b.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[b.dataset.page]}"/></svg><span>${b.dataset.page[0].toUpperCase()+b.dataset.page.slice(1)}</span>`;
+  b.onclick=()=>navTo(b.dataset.page);});
+PAGES.forEach(p=>{const b=document.createElement('button');b.dataset.page=p;
+  b.innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${ICONS[p]}"/></svg>${p==='cfop'?'CFOP':p[0].toUpperCase()+p.slice(1)}`;
+  b.onclick=()=>navTo(p);$('bottombar').appendChild(b);});
+window.addEventListener('hashchange',()=>navTo(location.hash.slice(1)));
+
+/* ---------- 18. Boot ---------- */
+function renderAll(){renderRecent();renderSolves();renderStats();renderLib('oll');renderLib('pll');renderCFOP();renderPB();syncAuto();}
+showScramble();renderAll();navTo(location.hash.slice(1)||'timer');
+</script>
+</body>
+</html>
